@@ -24,32 +24,49 @@ def transportation_problem_north_west_corner(costs, demand, supply):
         print("Adjusted supply:", supply)
         print("Adjusted demand:", demand)
 
-    print("\nCost Matrix:\n")
+    print("\nInitial Matrix:")
     for i in range(m):
         for j in range(n):
-            print(" ", costs[i][j], end=' ')
-        print(supply[i])
+            print("{:4}".format(costs[i][j]), end=' ')
+        print("{:4}".format(supply[i]))
 
     for j in range(n):
-        print("", demand[j], end=' ')
+        print("{:4}".format(demand[j]), end=' ')
 
-    sum_cost = 0
+    # Initialize the initial solution matrix with zeros
+    initial_solution = [[0] * n for _ in range(m)]
+
+    # Find the initial solution using North West Corner Rule
     i = j = 0
     while i < m and j < n:
-        if supply[i] < demand[j]:
-            sum_cost += costs[i][j] * supply[i]
-            demand[j] -= supply[i]
+        allocation = min(supply[i], demand[j])
+        initial_solution[i][j] = allocation
+        supply[i] -= allocation
+        demand[j] -= allocation
+
+        # Cross out the row or column if supply or demand becomes zero
+        if supply[i] == 0:
             i += 1
-        elif supply[i] > demand[j]:
-            sum_cost += costs[i][j] * demand[j]
-            supply[i] -= demand[j]
-            j += 1
-        elif supply[i] == demand[j]:
-            sum_cost += costs[i][j] * demand[j]
-            i += 1
+        elif demand[j] == 0:
             j += 1
 
-    print("\n\nMinimum cost is", sum_cost, "!")
+    # Print the initial solution matrix
+    print("\n\nInitial Solution Matrix:")
+    for i in range(m):
+        for j in range(n):
+            print("{:4}".format(initial_solution[i][j]), end=' ')
+        print("{:4}".format(supply[i]))
+
+    for j in range(n):
+        print("{:4}".format(demand[j]), end=' ')
+
+    sum_cost = 0
+    for i in range(m):
+        for j in range(n):
+            sum_cost += initial_solution[i][j] * costs[i][j]
+
+    print("\n\nInitial Minimum cost is", sum_cost, "!")
+
 
 # Example usage
 costs = [[11, 13, 17, 14],
