@@ -1,7 +1,8 @@
 import numpy as np
 
 def reduce_matrix_costs(cost_matrix):
-    print("Initial matrix:")
+    print("\n-------------------------------------------------")
+    print("\nInitial matrix:")
     print(cost_matrix)
 
     # Subtracting the minimum in each row
