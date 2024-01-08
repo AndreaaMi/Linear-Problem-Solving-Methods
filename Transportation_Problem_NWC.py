@@ -13,21 +13,6 @@ def print_matrix(costs,supply,demand):
         print("{:4}".format(demand[j]), end=' ')
 
 
-def north_west_corner(supply, demand, initial_solution):
-    m, n = costs.shape
-    i = j = 0
-    while i < m and j < n:
-        allocation = min(supply[i], demand[j])
-        initial_solution[i][j] += allocation
-        supply[i] -= allocation
-        demand[j] -= allocation
-
-        # Cross out the row or column if supply or demand becomes zero
-        if supply[i] == 0:
-            i += 1
-        elif demand[j] == 0:
-            j += 1
-
 def print_solution_matrix(solution, supply, demand):
     m, n = solution.shape
 
@@ -39,6 +24,34 @@ def print_solution_matrix(solution, supply, demand):
     for j in range(n):
         print("{:4}".format(demand[j]), end=' ')
 
+
+def least_cost_method(costs, supplies, demands):
+    m, n = costs.shape
+    solution = np.zeros((m, n), dtype=int)
+
+    while np.any(supplies > 0) and np.any(demands > 0):
+        min_cost = np.inf
+        min_i, min_j = -1, -1
+
+        for i in range(m):
+            for j in range(n):
+                if supplies[i] > 0 and demands[j] > 0 and costs[i, j] < min_cost:
+                    min_cost = costs[i, j]
+                    min_i, min_j = i, j
+
+        if min_i == -1 or min_j == -1:
+            break
+
+        quantity = min(supplies[min_i], demands[min_j])
+        solution[min_i, min_j] = quantity
+
+        supplies[min_i] -= quantity
+        demands[min_j] -= quantity
+
+    solution = np.where(solution == 0, -1, solution)
+    return solution
+
+
 def check_if_balanced(costs, demand, supply):
     m, n = costs.shape
 
@@ -46,10 +59,7 @@ def check_if_balanced(costs, demand, supply):
     if np.sum(supply) != np.sum(demand):
         print("The transportation problem is unbalanced!\nTotal supply:", np.sum(supply),"\nTotal demand:", np.sum(demand))
 
-        # Calculate the necessary adjustment value
         adjustment_value = np.abs(np.sum(supply) - np.sum(demand))
-
-        # Add dummy row or column based on whether supply or demand is greater
         if np.sum(supply) > np.sum(demand):
             demand = np.append(demand, adjustment_value)
             costs = np.column_stack((costs, np.zeros(m)))
@@ -62,109 +72,158 @@ def check_if_balanced(costs, demand, supply):
         print("Adjusted demand:", demand)
     else:
         print("The transportation problem is balanced!")
-        
-def iterative_transportation_method(costs, demand, supply):
-    m, n = costs.shape
 
+
+def iterative_transportation_method(costs, demand, supply):
     check_if_balanced(costs, demand, supply)
 
-    print("\nInitial Matrix:")
+    print("\nInitial Costs Matrix:")
     print_matrix(costs,supply,demand)
-
-    initial_solution = np.zeros((m, n), dtype=int)
+    print("\n")
+    initial_solution =  np.zeros_like(costs)
+    initial_solution = least_cost_method(costs, supply, demand)
 
     iteration = 1
     while True:
         print(f"\n-------- {iteration}. Iteration --------\n")
-        north_west_corner(supply, demand, initial_solution)
-
-        # Print the current solution matrix
         print("\nCurrent Solution Matrix:")
+
         print_solution_matrix(initial_solution, supply, demand)
 
-        sum_cost = np.sum(initial_solution * costs)
+        U, V = uv(costs, initial_solution)
+        print("\n\nU:", U, "  V:", V, "\n" )
 
-        print("\n\nCurrent Minimum cost is", sum_cost, "!\n")
+        new_costs = calculate_new_costs(costs, U, V, initial_solution)
+        print("New Costs:")
+        print_matrix(new_costs, supply, demand)
 
-        # Implement UV method, calculate penalties, and find closed path
-        U, V = uv_method(costs, initial_solution)
-        penalties = calculate_penalties(costs, U, V, initial_solution)
-        i, j = find_most_negative(penalties)
-        new_basic_cell = (i, j)
-        closed_path = form_closed_path(initial_solution, new_basic_cell)
-
-        print("\nClosed Path:")
-        print(closed_path)
-
-        min_value = min(initial_solution[cell] for cell in closed_path[1:-1])
-        initial_solution = update_solution(initial_solution, closed_path, min_value)
-
-        print("\nUpdated Initial Solution:")
-        print_solution_matrix(initial_solution, supply, demand)
-
-
-        if np.all(penalties >= 0):
+        if np.all(new_costs >= 0):
+            print("\n\n----------------------------------")
             break
 
-        iteration += 1
-        print("\n------------------------\n")
+        i, j = find_most_negative(new_costs)
+        start_contour_cell = (i, j)
+        contour = form_contour(initial_solution, start_contour_cell, new_costs)
 
-    print("\n\nFinal Solution Matrix:")
+        print("\n\nContour:")
+        print(contour)
+
+        temp_solution = np.where(initial_solution == -1, 0, initial_solution)
+        min_value = min(temp_solution[cell] for cell in contour[1:-1])
+        initial_solution = update_solution(initial_solution, contour, min_value)
+
+        print("\nUpdated Solution:")
+        print_solution_matrix(initial_solution, supply, demand)
+        print("\n")
+
+        iteration += 1
+
+    print("Final Solution Matrix:")
     print_solution_matrix(initial_solution, supply, demand)
 
+    total_cost = np.sum(initial_solution * costs)
+    print("\n\nMinimal Cost: Z =", total_cost, "!\n")
 
-    print("\n\nFinal Minimum cost is", sum_cost, "!")
 
-
-def uv_method(costs, solution):
+def uv(costs, solution):
     m, n = costs.shape
-    U = np.zeros(m)
-    V = np.zeros(n)
 
-    while True:
+    U = np.full(m, '*', dtype='object')
+    V = np.full(n, '*', dtype='object')
+
+    row_with_max_elements = np.argmax(np.sum(solution != -1, axis=1))
+    U[row_with_max_elements] = 0
+
+    while '*' in U or '*' in V:
         for i in range(m):
             for j in range(n):
-                if solution[i, j] != 0:
-                    if U[i] == 0 and V[j] == 0:
-                        U[i] = costs[i, j]
-                    else:
-                        V[j] = costs[i, j] - U[i]
+                if solution[i, j] != -1:
+                    if U[i] == '*' and V[j] != '*':
+                        U[i] = int(costs[i, j]) - int(V[j])
+                    elif U[i] != '*' and V[j] == '*':
+                        V[j] = int(costs[i, j]) - int(U[i])
 
         for j in range(n):
             non_zero_elements = solution[:, j].nonzero()[0]
             if len(non_zero_elements) == 1:
                 i = non_zero_elements[0]
-                U[i] = costs[i, j] - V[j]
-        break
+                if U[i] == '*' and V[j] != '*':
+                    U[i] = int(costs[i, j]) - int(V[j])
+                elif U[i] != '*' and V[j] == '*':
+                    V[j] = int(costs[i, j]) - int(U[i])
 
     return U, V
 
 
-def calculate_penalties(costs, U, V, solution):
+def form_contour(solution_matrix, start_contour_cell, new_costs):
+    m, n = solution_matrix.shape
+    visited_cells = set()
+    contour = []
+
+    def find_cycle(cell):
+        visited_cells.add(cell)
+        contour.append(cell)
+
+        i, j = cell
+        for col in range(n):
+            next_cell = (i, col)
+            if solution_matrix[next_cell] != -1 and next_cell not in visited_cells:
+                find_cycle(next_cell)
+
+        for row in range(m):
+            next_cell = (row, j)
+            if solution_matrix[next_cell] != -1 and next_cell not in visited_cells:
+                find_cycle(next_cell)
+
+    find_cycle(start_contour_cell)
+    contour.append(contour[0]) 
+
+    pruned_path = [contour[0]]
+    for i in range(1, len(contour)-1):
+        if contour[i][0] == contour[i+1][0] and contour[i][1] != contour[i+1][1]:
+            col = contour[i+1][1] if new_costs[contour[i+1][0], contour[i+1][1]] == 0 else contour[i][1]
+            pruned_path.append((contour[i][0], col))
+        elif contour[i][1] == contour[i+1][1] and contour[i][0] != contour[i+1][0]:
+            row = contour[i+1][0] if new_costs[contour[i+1][0], contour[i+1][1]] == 0 else contour[i][0]
+            pruned_path.append((row, contour[i][1]))
+
+    for i in range(3, len(pruned_path)):
+        current_cell = pruned_path[i]
+        base_cell = pruned_path[0]
+
+        if current_cell[0] == base_cell[0] or current_cell[1] == base_cell[1]:
+            final_contour = pruned_path[:i+1].copy()
+            break
+
+    return final_contour
+
+
+def calculate_new_costs(costs, U, V, solution):
     m, n = costs.shape
-    penalties = np.zeros_like(solution, dtype=int)
+    new_costs = np.zeros_like(solution, dtype=int)
+    tmp_solution = np.where(solution == 0, -1, solution)
 
     for i in range(m):
         for j in range(n):
-            if solution[i, j] == 0:
-                penalties[i, j] = U[i] + V[j] - costs[i, j]
+            if tmp_solution[i, j] == -1:
+                new_costs[i, j] = costs[i, j] - U[i] - V[j]
 
-    return penalties
+    return new_costs
 
 
-def find_most_negative(penalties):
-    min_penalty = np.min(penalties)
-    indices = np.where(penalties == min_penalty)
+def find_most_negative(new_costs):
+    min_penalty = np.min(new_costs)
+    indices = np.where(new_costs == min_penalty)
     return indices[0][0], indices[1][0]
 
 
-def update_solution(solution, closed_path, min_value):
+def update_solution(solution, contour, min_value):
+    solution = np.where(solution == -1, 0, solution)
     visited_nodes = set()
 
-    for i in range(len(closed_path)):
-        x, y = closed_path[i]
+    for i in range(len(contour)):
+        x, y = contour[i]
 
-        # Add condition to check whether the node is already visited
         if i % 2 == 0 and (x, y) not in visited_nodes:
             solution[x, y] += min_value
             visited_nodes.add((x, y))
@@ -175,49 +234,12 @@ def update_solution(solution, closed_path, min_value):
     return solution
 
 
-def form_closed_path(solution_matrix, new_basic_cell):
-    m, n = solution_matrix.shape
-    visited_cells = set()
-    closed_path = []
-
-    def find_cycle(cell):
-        visited_cells.add(cell)
-        closed_path.append(cell)
-
-        i, j = cell
-        for col in range(n):
-            next_cell = (i, col)
-            if solution_matrix[next_cell] != 0 and next_cell not in visited_cells:
-                find_cycle(next_cell)
-
-        for row in range(m):
-            next_cell = (row, j)
-            if solution_matrix[next_cell] != 0 and next_cell not in visited_cells:
-                find_cycle(next_cell)
-
-    find_cycle(new_basic_cell)
-    closed_path.append(closed_path[0])
-
-    prev_i, prev_j = closed_path[0]
-    k = 1
-    while k < len(closed_path) - 1:
-        next_i, next_j = closed_path[k]
-        if next_i != prev_i and next_j != prev_j:
-            closed_path.pop(k)
-            prev_i, prev_j = next_i, next_j
-        else:
-            k += 1
-            prev_i, prev_j = next_i, next_j
-
-    return closed_path
-
-
 # Example usage
-costs = np.array([[10, 12, 0],
-                  [8, 4, 3],
-                  [6, 9, 4],
-                  [7, 8, 5]])
-supply = np.array([20, 30, 20, 10])
-demand = np.array([10, 40, 30])
+costs = np.array([[4,9,2],
+                  [7,5,3],
+                  [1,6,3],
+                  [3,2,8]])
+supply = np.array([150,350,300,200])
+demand = np.array([250,350,400])
 
 iterative_transportation_method(costs, demand, supply)
