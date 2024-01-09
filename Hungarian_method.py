@@ -2,8 +2,6 @@ import numpy as np
 
 def reduce_matrix_costs(cost_matrix):
     print("\n-------------------------------------------------")
-    print("\nInitial matrix:")
-    print(cost_matrix)
 
     # Subtracting the minimum in each row
     reduced_matrix = cost_matrix - np.min(cost_matrix, axis=1)[:, np.newaxis]
@@ -96,6 +94,12 @@ def update_matrix(cost_matrix, cover_rows, cover_cols):
 
     return current_matrix
 
+def is_optimal_assignment(marked_zeros_idx, dim):
+    marked_rows = set(row for row, _ in marked_zeros_idx)
+    marked_cols = set(col for _, col in marked_zeros_idx)
+
+    return len(marked_rows) + len(marked_cols) == dim
+
 def hungarian_algorithm(cost_matrix):
     # Adding and subtracting the minimum element from the corresponding places
     dim = cost_matrix.shape[0]
@@ -108,7 +112,7 @@ def hungarian_algorithm(cost_matrix):
 
         if zero_count < dim:
             cur_mat = update_matrix(cur_mat, marked_rows, marked_cols)
-
+    
     return zero_pos
 
 def solve_hungarian(cost_matrix, pos):
@@ -121,12 +125,14 @@ def solve_hungarian(cost_matrix, pos):
 
     return total, solution_matrix
 
-cost_matrix = np.array([[14, 9, 12, 8, 16],
-                        [8, 7, 9, 9, 14],
-                        [9, 11, 10, 10, 12],
-                        [10, 8, 8, 6, 14],
-                        [11, 9, 10, 7, 13]])
-
+cost_matrix = np.array([[10,4,6,10,12],
+                        [11,7,7,9,14],
+                        [13,8,12,14,15],
+                        [14,16,13,17,1],
+                        [17,11,17,20,19]])
+print("\nInitial matrix:")
+print(cost_matrix)
 zero_pos = hungarian_algorithm(cost_matrix.copy())
 result, result_matrix = solve_hungarian(cost_matrix, zero_pos)
+print("\n**********************************************")
 print(f"\nAssignment Problem Result: {result:.0f}\n{result_matrix}\n")
