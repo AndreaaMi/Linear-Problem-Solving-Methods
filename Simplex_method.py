@@ -1,205 +1,200 @@
 import numpy as np
+import warnings
 
-def convert_inequality_to_equality(c, A, b):
-    num_constraints = len(b)
+warnings.simplefilter(action="ignore", category=DeprecationWarning)
+np.set_printoptions(suppress=True)
 
-    A_artificial = np.hstack((A, np.eye(num_constraints)))
-    c_combined = np.hstack((c, np.zeros(num_constraints)))
-    
-    return c_combined, A_artificial
+# Implementation of the Simplex algorithm for maximization problems
 
-def initialize_simplex(c_combined, A_combined, b):
-    num_constraints = len(b)
-    num_variables = len(c)
+# Maximize: 10x + 5y 
+# Constraints:
+#  4x + 2y <= 900
+#  2x + 4y <= 1000
+#   x +  y   <= 300
+#  x, y >= 0
 
-    B_indices = np.arange(num_variables, num_variables + num_constraints)
-    
-    c = A_combined[:, B_indices]
+#c = np.array([6, 14, 13, 0, 0])
+#A = np.matrix([[1, 2, 4, 1 , 0], [0.5, 2, 1, 0, 1]])
+#b = np.array([[900], [1000]])
+
+c = np.array([2, 1.5, 0, 0])
+A = np.matrix([[6, 3, 1 , 0], [75, 100, 0, 1]])
+b = np.array([[1200], [25000]])
+
+
+def pivot(table, nonbase, nonbase_idx):
+    print("\n**************************\n")
+    print(np.round(table, 2))
+    omega = table[0, 1:-2]
+    below_omega = table[1:, 1:-2]
+    print("nonbase:", nonbase, "  nonbase_idx:", nonbase_idx)
+    j_candidates_A = []
+    j_candidates_B = []
+    j_candidates_C = []
+    for (index, val) in enumerate(nonbase_idx):
+        print("val:", val)
+        aj = A[:, val]
+        print("aj:\n", aj)
+        print("nonbase[index]:", nonbase[index])
+        cj = omega.dot(aj) - nonbase[index]
+        print("cj:", cj)
+        j_candidates_A.append(cj)
+        j_candidates_B.append(aj)
+        j_candidates_C.append(val)
+    # Termination condition
+    flag = 0
+    for candidate in j_candidates_A:
+        if candidate < 0:
+            flag = 1
+    if flag == 0:
+        return (False, False)
+    min_j_candidate_A = j_candidates_A[0]
+    min_j_candidate_index = 0
+    for (index, candidate) in enumerate(j_candidates_A):
+        if min_j_candidate_A > candidate:
+            min_j_candidate_A = candidate
+            min_j_candidate_index = index
+    min_j_candidate_value = min_j_candidate_A
+    min_j_candidate_array = j_candidates_B[min_j_candidate_index]
+    min_j_candidate_coeffs_index = j_candidates_C[min_j_candidate_index]
+    print("min_j_candidate_value:", min_j_candidate_value)
+    print("min_j_candidate_array:", min_j_candidate_array)
+    print("min_j_candidate_coeffs_index:", min_j_candidate_coeffs_index)
+    # Insert pivot column
+    table[0, -1] = min_j_candidate_value
+    # Cast to list because table[1:, -1] has shape (2,) and this is (2,1)
+    table[1:, -1] = list(below_omega.dot(min_j_candidate_array))
+    # Determine pivot element and pivot row
+    min_elements = []
+    for index in range(A.shape[0]):
+        divisor = table[1:, -2]
+        divider = table[1:, -1]
+        division = divisor[index] / divider[index]
+        min_elements.append((division, index + 1))
+    print("min_elements:", min_elements)
+    (min_element, pivot_row) = min(min_elements)
+    print("min_element & pivot_row :", min_element, pivot_row)
+    pivot_elem = table[pivot_row, -1]
+    print("pivot_elem =", pivot_elem)
+    # Update the first column
+    table[pivot_row, 0] = min_j_candidate_coeffs_index
+    print("Updated first column with", min_j_candidate_coeffs_index)
+    print(np.round(table, 2))
+    return (pivot_row, pivot_elem)
+
+
+def reset(table):
+    print("\n----------------------------------------------\n")
+    print("c:", c)
+    base = []
+    base_idx = []
+    nonbase = []
+    nonbase_idx = []
+    for (index, val) in enumerate(c):
+        if index in table[1:, 0]:
+            base.append(val)
+            base_idx.append(index)
+        else:
+            nonbase.append(val)
+            nonbase_idx.append(index)
+    print("base:", nonbase, "     base_idx:", nonbase_idx)
+    print("nonbase:", nonbase, "  nonbase_idx:", nonbase_idx)
+    return (
+        base,
+        base_idx,
+        nonbase,
+        nonbase_idx,
+    )
+
+
+def update_table(table, pivot_row, pivot_elem):
+    print("Calling update_table...")
+    # Update all elements except the pivot row, it should not affect the others
+    for row in range(A.shape[0] + 1):
+        for col in range(1, A.shape[0] + 2):
+            if row == pivot_row:
+                continue
+            approp_row = table[pivot_row, col]
+            approp_col = table[row, -1]
+            table[row, col] = table[row, col] - (approp_row * approp_col / pivot_elem)
+    # Update the pivot row
+    for row in range(A.shape[0] + 1):
+        for col in range(1, A.shape[0] + 2):
+            if row == pivot_row:
+                table[row, col] = table[row, col] / pivot_elem
+
+
+def simplex_maximize(c, A, b):
+    # Initial filling of the table
+    table = np.zeros((A.shape[0] + 1, A.shape[0] + 3))
+    print("Initial table:\n")
+    print(table,"\n")
+    # Fill the first column
+    base_idx = []
+    for (index, val) in enumerate(c):
+        if val == 0:
+            base_idx.append(index)
+    table[1:, 0] = base_idx
+    base = np.zeros((1, len(base_idx)))
+    for (index, indexValue) in enumerate(base_idx):
+        base[0, index] = c[indexValue]        
+    print("base_idx:", base_idx, " base:", base)
+
+    B_inv = np.linalg.inv(A[:, base_idx[0] :])
+    print("\nB inv: ")
+    print(B_inv)
+    table[1:, 1:-2] = B_inv
+
+    b = B_inv.dot(b)
+    print("b:")
+    print(b)
+    # Cast to list because table[1:, -2] has shape (2,) and this is (2,1)
+    table[1:, -2] = list(b)
+
+    omega = base.dot(B_inv)
+    print("omega:", omega)
+    table[0, 1:-2] = omega[0, :]
+    Cbb = base.dot(b)
+    print("Cbb: ")
+    print(Cbb)
+    table[0, -2] = Cbb
+
+    print("\nFinished inserting!\n")
+    print(np.round(table, 2))
+
+    # Reset and get nonbase and nonbase_idx, they are created here
+    (
+        base,
+        base_idx,
+        nonbase,
+        nonbase_idx,
+    ) = reset(table)
 
     while True:
-        try:
-            B_inv = np.linalg.inv(c)
-        except np.linalg.LinAlgError:
-            print("The c matrix is not invertible. Choose new basic variables.")
-            break
-
-        B_inv_b = np.dot(B_inv, b)
-        if np.all(B_inv_b >= 0):
-            print("\nBasic variables indices:", B_indices)
-            print("\nB matrix:")
-            print(c)
-            print("\nB inverse:")
-            print(B_inv)
-            print("\nB_inv * b:")
-            print(B_inv_b)
-            
-            B_values = A_combined[:, B_indices]
-            print("\nMatrix c (extracted from A_combined):")
-            print(B_values)
-            
-            return B_indices, B_inv, B_inv_b
-        else:
-            print("B_inv * b is not non-negative. Choose new basic variables.")
-            break
-
-def calculate_W_Cb_B_inv_b(c_combined, B_indices, B_inv, b):
-    Cb = c_combined[B_indices]
-    W = np.dot(Cb, B_inv)
-    Cb_B_inv_b = np.dot(Cb, np.dot(B_inv, b))
-
-    return W, Cb_B_inv_b
-
-def find_pivot_column(W, C, A_combined, B_indices, maximization=True):
-    pivot_head_values = []
-    non_basic_indices = [i for i in range(len(C)) if i not in B_indices]
-    
-    print("\nNon basic indices: ", non_basic_indices)
-    
-    for j in non_basic_indices:
-        a_j = A_combined[:, j]
-        pivot_head = np.dot(W, a_j) - C[j]
-        pivot_head_values.append(pivot_head)
-
-    if maximization:
-        pivot_col_index = np.argmin(pivot_head_values)
-        pivot_head = np.min(pivot_head_values)
-    else:
-        pivot_col_index = np.argmax(pivot_head_values)
-        pivot_head = np.max(pivot_head_values)
-
-    pivot_col = A_combined[:, non_basic_indices[pivot_col_index]]
+        # Calculation of the pivot column, pivot element, and update of the first column
+        (pivot_row, pivot_elem) = pivot(table, nonbase, nonbase_idx)
+        if pivot_row == False:
+            print(np.round(table, 2))
+            print("Simplex algorithm finished!")
+            print("The result is: ", table[0, -2])
+            for i in range(table.shape[0] - 1):
+                print(
+                    "Base variable",
+                    int(table[i + 1, 0]),
+                    "has coefficient",
+                    table[i + 1, -2],
+                )
+            return
+        (
+            base,
+            base_idx,
+            nonbase,
+            nonbase_idx,
+        ) = reset(table)
+        # Update all elements except the first and last column
+        # Calculate based on pivot_row, pivot_column (from the table directly) and pivot_elem
+        update_table(table, pivot_row, pivot_elem)
+        print(np.round(table, 2))
 
 
-    return pivot_col, pivot_head, pivot_col_index, pivot_head_values
-
-def find_pivot_row(B_inv_b, pivot_col, A_combined):
-    ratios = B_inv_b / pivot_col
-
-    positive_ratios = ratios[ratios > 0]
-    ratios = np.where(np.isinf(ratios), 0, ratios)
-    print("\nDivision results: ", ratios)
-
-    if len(positive_ratios) > 0:
-        pivot_row = np.argmin(positive_ratios)
-        return pivot_row
-    else:
-        print("The problem is unbounded.")
-        return None
-
-def revisedSimplex(B_inverse, W, B_inv_b, Cb_B_inv_b, pivot_col, pivot_row, pivot_col_index, pivot_head, B_indices, c_combined):
-  pivot_element = pivot_col[pivot_row]
-
-  B_inv_m, B_inv_n = B_inverse.shape
-
-  for i in range(B_inv_m):
-    for j in range(B_inv_n):
-      if i == pivot_row:
-        B_inverse[i][j] /= pivot_element
-      else:
-        B_inverse[i][j] = B_inverse[i][j] - ((pivot_col[i] * B_inverse[pivot_row][j])/ pivot_element)
-
-  Cb_B_inv_b = Cb_B_inv_b - ((pivot_head * B_inv_b[pivot_row])/pivot_element)
-
-  m,  = B_inv_b.shape
-
-  for i in range(m):
-    if i == pivot_row:
-      B_inv_b[i] /= pivot_element
-    else:
-        B_inv_b[i] = B_inv_b[i] - ((pivot_col[i] * B_inv_b[pivot_row])/ pivot_element)
-  
-  new_base_variable = pivot_col_index
-
-  B_indices = np.delete(B_indices, pivot_row)
-  B_indices = np.append(B_indices, new_base_variable)
-
-  n, = W.shape
-  for i in range(n):
-    W[i] = W[i] - ((pivot_head * B_inverse[pivot_row][i])/ pivot_element)
-
-  return B_inverse, Cb_B_inv_b, B_inv_b, B_indices, W
-
-
-# Example problem
-'''
-c = np.array([6, 14, 13])
-A = np.array([[1, 2, 4], 
-              [0.5, 2, 1]])
-b = np.array([60, 24])
-'''
-c = np.array([3.8, 4.25])
-A = np.array([[1, 0],
-              [0, 1],
-              [3, 5],
-              [20, 10]])
-b= np.array([28, 30, 180, 640])
-
-tolerance = 10e-10
-
-c_combined, A_combined = convert_inequality_to_equality(c, A, b)
-
-print("\nInitial c:", c)
-print("\nInitial A:")
-print(A)
-print("\nInitial b:", b)
-
-print("\n----------------------------")
-print("\nAfter converting the constraints to equality type constraints:")
-
-print("\nNew c:", c_combined)
-print("\nNew A:")
-print(A_combined)
-
-print("\n===========================FINDING BASE VARIABLES\n")
-B_indices, B_inv, B_inv_b = initialize_simplex(c_combined, A_combined, b)
-
-print("\n===========================CALCULATING W AND Cb * (B_inverse * b)\n")
-W, Cb_B_inv_b = calculate_W_Cb_B_inv_b(c_combined, B_indices, B_inv, b)
-print("W:", W)
-print("\nCb * (B_inverse * b):", Cb_B_inv_b)
-
-print("\n===========================FINDING PIVOT COLUMN\n")
-pivot_col, pivot_head, pivot_col_index, pivot_head_values = find_pivot_column(W, c_combined, A_combined, B_indices, maximization=True)
-print("\nPivot column values: ", pivot_col)
-print("\nPivot Head:", pivot_head)
-print("\nPivot column index: ", pivot_col_index)
-print("\nPivot head values: ", pivot_head_values)
-
-print("\n===========================FINDING PIVOT ROW\n")
-pivot_row_index = find_pivot_row(B_inv_b, pivot_col, A_combined)
-print("\nPivot row:", pivot_row_index)
-
-maximization = True
-while True:
-  
-  
-  if maximization and np.all(np.greater_equal(pivot_head_values, -tolerance)):
-    print("Optimal solution reached.")
-    break
-  if not maximization and np.all(np.less_equal(pivot_head_values, tolerance)):
-    print("Optimal solution reached.")
-    break
-
-  print("\n------------------------------------\n")
-  New_B_inverse, New_Cb_B_inv_b, New_B_inv_b, New_B_indices, New_W = revisedSimplex(B_inv, W, B_inv_b, Cb_B_inv_b, pivot_col, pivot_row_index, pivot_col_index, pivot_head, B_indices, c_combined)
-  print("\nNew B_inv:")
-  print(New_B_inverse)
-  print("\nNew Cb * (B_inverse * b):")
-  print(New_Cb_B_inv_b)
-  print("\nNew B_inv * b:")
-  print(New_B_inv_b)
-  print("\nBasic variables indices: ", New_B_indices)
-  print("\nNew W: ", New_W)
-
-  pivot_col_result = find_pivot_column(New_W, c_combined, A_combined, New_B_indices, maximization=True)
-  if pivot_col_result is None:
-    break
-
-  pivot_col, pivot_head, pivot_col_index, pivot_head_values = pivot_col_result
-  print("\nPivot column values: ", pivot_col)
-  print("\nPivot Head:", pivot_head)
-  print("\nPivot column index: ", pivot_col_index)
-  print("\nPivot head values: ", pivot_head_values)
-
-  pivot_row_index = find_pivot_row(New_B_inv_b, pivot_col, A_combined)
-  print("\nPivot row:", pivot_row_index)
+simplex_maximize(c, A, b)

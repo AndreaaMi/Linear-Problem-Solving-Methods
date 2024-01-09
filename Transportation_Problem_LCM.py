@@ -241,5 +241,6 @@ costs = np.array([[4,9,2],
                   [3,2,8]])
 supply = np.array([150,350,300,200])
 demand = np.array([250,350,400])
+ 
 
 iterative_transportation_method(costs, demand, supply)
